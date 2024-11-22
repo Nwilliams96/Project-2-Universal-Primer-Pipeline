@@ -1,13 +1,10 @@
 #!/usr/bin/env Rscript
 
 #Purpose: normalize raw counts of 16S and 18S ASVs by dividing the 16S reads and 18S reads by the % passing DADA2, 
-#then converting to proportions and multiplying counts of 18S sequences by the bias against them and adjusting the 16S sequences to match that bias (as user specifies).
-#Required packages: Rscript, args, tidyverse
+#then converting to proportions and multiplying counts of 18S sequences by the bias against them and adjusting the 
+#16S sequences to match that bias (as user specifies).
 #Output: This returns a file with ASV relative abundances out of (16S + 18S).
-#Note: we recommend assuming a 2-fold bias against 18S sequences, which has been found with Illumina HiSeq or MiSeq data (Yeh et al. 2018)
 #This script must be run from the base directory (the folder that contains 02-PROKs/ and 02-EUKs/)
-#Author: Nathan Lloyd Robert Williams
-#Final version: 11.16.2022
 
 #Note that there will be Eukaryotes in your 16S. These come from the 16S chloroplast, and are phytoplankton.
 #Set directory for libraries.
@@ -21,13 +18,9 @@ library(data.table)
 
 #Set the correction factors for each file
 #Correction factor for 18S and 16S, as determined empirically - please see notes for calculation instructions.
-#Change this to reflect your dataset! Placeholder value of 2 from the mock communities
+#Change this to reflect your dataset!
 correction_factor_18S = 3.84
 correction_factor_16S = 0.79
-
-
-#Import .16S.all-16S-seqs.with-tax.tsv
-
 
 # List and read files, combine into a single data.table
 raw_16S <- list.files(pattern = '*.16S.all-16S-seqs.with-tax.tsv') %>%
@@ -43,9 +36,6 @@ raw_16S <- raw_16S %>%
 # Convert to data.table if needed for efficiency
 raw_16S <- as.data.table(raw_16S)
 
-
-#Import .18S.all-18S-seqs.with-PR2-tax.tsv
-
 # List and read files, combine into a single data.table
 raw_18S <- list.files(pattern = '*.18S.all-18S-seqs.with-PR2-tax.tsv') %>%
   # Use purrr::map to read and clean each file
@@ -54,16 +44,14 @@ raw_18S <- list.files(pattern = '*.18S.all-18S-seqs.with-PR2-tax.tsv') %>%
   as_tibble()
 
 # Rename "#OTU ID" to "ASV_hash" if it exists
-raw_18S <- raw_18S %>%
-  dplyr::rename(ASV_hash = `#OTU ID`)
+raw_18S <- raw_18S %>% dplyr::rename(ASV_hash = `#OTU ID`)
 
 # Convert to data.table if needed for efficiency
 raw_18S <- as.data.table(raw_18S)
 
+#1. Calculate percent of reads that passed DADA2 denoising for both proks and euks
 
-#1. Calculate percent of reads that passed DADA2 denoising for both proks and euks -----
-
-#Import 16S statistics}
+#Import 16S statistics
 
 statistics_16S <- list.files(pattern = '*.16S.stats.tsv') %>% #List and read files, combine into a single data.table
   map_dfr(~ readr::read_delim(.x, delim = "\t")) %>% #Read each file
@@ -75,8 +63,7 @@ statistics_16S <- list.files(pattern = '*.16S.stats.tsv') %>% #List and read fil
   select(SampleID, non_chimeric, input) %>%
   mutate(percentage_passed_final = non_chimeric/input)  #Calculate ratio of reads that passed DADA2 denoising 16S
 
-
-#Import 18S statistics}
+#Import 18S statistics
 statistics_18S <- list.files(pattern = '*.18S.stats.tsv') %>% #List and read files, combine into a single data.table
   map_dfr(~ readr::read_delim(.x, delim = "\t")) %>% #Read each file
   slice(-1) %>% # Remove the first row
@@ -87,8 +74,7 @@ statistics_18S <- list.files(pattern = '*.18S.stats.tsv') %>% #List and read fil
   select(SampleID, non_chimeric, input) %>%
   mutate(percentage_passed_final = non_chimeric/input) #Calculate ratio of reads that passed DADA2 denoising 18S
 
-
-#2. Normalize ASV counts (divide counts of ASVs/ percent passed for each sample, multiply euks ASV counts by the bias you specified)------
+#2. Normalize ASV counts (divide counts of ASVs/ percent passed for each sample, multiply euks ASV counts by the bias you specified)
 
 #Arrange and connect 16S data and then make the DADA2 statistics calculcation}
 raw_16S_long <- raw_16S %>%
@@ -107,8 +93,6 @@ raw_18S_long <- raw_18S %>%
   mutate(read_abundance = as.numeric(read_abundance)) %>%
   left_join(statistics_18S, by = "SampleID") %>%
   mutate(corrected_read_abundance = (read_abundance * correction_factor_18S) / percentage_passed_final)
-
-
 
 #Join the two data frames together, pivot wider and then export}
 combined_asv_long <- rbind(raw_18S_long, raw_16S_long) %>%
